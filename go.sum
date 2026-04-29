@@ -26,8 +26,8 @@ github.com/spiffe/go-spiffe/v2 v2.6.0 h1:l+DolpxNWYgruGQVV0xsfeya3CsC7m8iBzDnMps
 github.com/spiffe/go-spiffe/v2 v2.6.0/go.mod h1:gm2SeUoMZEtpnzPNs2Csc0D/gX33k1xIx7lEzqblHEs=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/zero-day-ai/sdk v0.89.1 h1:Mw9ZUNc/4lyHYUifC6Y+Cv1xuJNpdtB/IwOvOyHUZls=
-github.com/zero-day-ai/sdk v0.89.1/go.mod h1:ZQA2vKJ2Hoj+oTwQgQDtu3tPvRBo0RqlQYnk/BHtHzw=
+github.com/zero-day-ai/sdk v0.90.0 h1:EjVBY+VOfOhyB+e5CSZRoxUQZVIw5cw3TmTNKh0fg68=
+github.com/zero-day-ai/sdk v0.90.0/go.mod h1:ZQA2vKJ2Hoj+oTwQgQDtu3tPvRBo0RqlQYnk/BHtHzw=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
 go.opentelemetry.io/auto/sdk v1.2.1/go.mod h1:KRTj+aOaElaLi+wW1kO/DZRXwkF4C5xPbEe3ZiIhN7Y=
 go.opentelemetry.io/otel v1.43.0 h1:mYIM03dnh5zfN7HautFE4ieIig9amkNANT+xcVxAj9I=
