@@ -7,11 +7,14 @@ package registry
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"sync"
 
 	graphragpb "github.com/zero-day-ai/sdk/api/gen/gibson/graphrag/v1"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/zero-day-ai/gibson-tool-runner/internal/policy"
 )
 
 // ExecuteRequest is the typed input every parser receives. Callers build it
@@ -87,9 +90,10 @@ type Parser interface {
 }
 
 var (
-	mu       sync.RWMutex
-	parsers  = map[string]Parser{}
-	registry []Parser
+	mu        sync.RWMutex
+	parsers   = map[string]Parser{}
+	registry  []Parser
+	policies  = map[string]policy.ArgsPolicy{}
 )
 
 // Register records a parser in the global table. Panics if the name is
@@ -106,6 +110,67 @@ func Register(p Parser) {
 	}
 	parsers[name] = p
 	registry = append(registry, p)
+}
+
+// RegisterArgsPolicy associates a per-tool args allowlist with a tool name.
+// Parsers should call this from init() right after Register() so the
+// allowlist is in place before any Execute() reaches ApplyPolicy.
+//
+// Tools with no registered policy default-deny every flag — see
+// policy.ApplyArgs's nil-policy semantics. That is intentional: failing
+// closed prevents an oversight in a new tool's onboarding from opening
+// a flag-injection hole.
+func RegisterArgsPolicy(toolName string, p policy.ArgsPolicy) {
+	mu.Lock()
+	defer mu.Unlock()
+	if toolName == "" {
+		panic("registry: RegisterArgsPolicy with empty tool name")
+	}
+	policies[toolName] = p
+}
+
+// LookupArgsPolicy returns the registered policy for a tool. Second
+// return is false when no policy was registered (deny-all default).
+func LookupArgsPolicy(toolName string) (policy.ArgsPolicy, bool) {
+	mu.RLock()
+	defer mu.RUnlock()
+	p, ok := policies[toolName]
+	return p, ok
+}
+
+// ApplyPolicy is the canonical entry point parsers call before appending
+// req.Args to their argv. It looks up the registered policy, runs
+// policy.ApplyArgs, logs any dropped flags via the supplied logger
+// (or slog.Default() when nil), and returns the filtered args plus the
+// validator error (when any).
+//
+// Callers MUST surface a non-nil error as a structured InvalidArgument
+// failure to the daemon — not silently treat it as "drop". A validator
+// rejection means the caller deliberately tried something that pattern-
+// matches the policy but failed the value check; that is the strongest
+// adversarial signal in the surface and it deserves a hard error.
+func ApplyPolicy(toolName string, args []string, log *slog.Logger) ([]string, error) {
+	if log == nil {
+		log = slog.Default()
+	}
+	p, _ := LookupArgsPolicy(toolName)
+	out, dropped, err := policy.ApplyArgs(args, p)
+	for _, d := range dropped {
+		log.Warn("tool.flag.denied",
+			"tool", toolName,
+			"flag", d.Flag,
+			"value", d.Value,
+			"reason", d.Reason,
+		)
+	}
+	if err != nil {
+		log.Warn("tool.flag.value_rejected",
+			"tool", toolName,
+			"error", err.Error(),
+		)
+		return nil, err
+	}
+	return out, nil
 }
 
 // Lookup returns the parser for a tool name. Second return is false if the

@@ -78,7 +78,12 @@ func (p *parser) Execute(ctx context.Context, req registry.ExecuteRequest) (*reg
 	if paths := req.Options["paths"]; paths != "" {
 		args = append(args, "-path", paths)
 	}
-	args = append(args, req.Args...)
+	filtered, policyErr := registry.ApplyPolicy(toolName, req.Args, nil)
+	if policyErr != nil {
+		return &registry.ExecuteResponse{ParseQuality: registry.ParseQualityFailed},
+			fmt.Errorf("httpx args policy: %w", policyErr)
+	}
+	args = append(args, filtered...)
 
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "httpx", args...)

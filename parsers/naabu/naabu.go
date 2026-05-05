@@ -56,7 +56,12 @@ func (p *parser) Execute(ctx context.Context, req registry.ExecuteRequest) (*reg
 	if ports := req.Options["ports"]; ports != "" {
 		args = append(args, "-p", ports)
 	}
-	args = append(args, req.Args...)
+	filtered, policyErr := registry.ApplyPolicy(toolName, req.Args, nil)
+	if policyErr != nil {
+		return &registry.ExecuteResponse{ParseQuality: registry.ParseQualityFailed},
+			fmt.Errorf("naabu args policy: %w", policyErr)
+	}
+	args = append(args, filtered...)
 
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "naabu", args...)

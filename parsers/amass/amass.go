@@ -58,7 +58,12 @@ func (p *parser) Execute(ctx context.Context, req registry.ExecuteRequest) (*reg
 		return &registry.ExecuteResponse{ParseQuality: registry.ParseQualityFailed}, fmt.Errorf("amass: target is required")
 	}
 	args := []string{"enum", "-passive", "-json", "/dev/stdout", "-d", req.Target}
-	args = append(args, req.Args...)
+	filtered, policyErr := registry.ApplyPolicy(toolName, req.Args, nil)
+	if policyErr != nil {
+		return &registry.ExecuteResponse{ParseQuality: registry.ParseQualityFailed},
+			fmt.Errorf("amass args policy: %w", policyErr)
+	}
+	args = append(args, filtered...)
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "amass", args...)
 	cmd.Stdout = &stdout

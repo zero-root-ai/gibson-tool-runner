@@ -95,7 +95,12 @@ func (p *parser) Execute(ctx context.Context, req registry.ExecuteRequest) (*reg
 	if tpl := req.Options["templates"]; tpl != "" {
 		args = append(args, "-t", tpl)
 	}
-	args = append(args, req.Args...)
+	filtered, policyErr := registry.ApplyPolicy(toolName, req.Args, nil)
+	if policyErr != nil {
+		return &registry.ExecuteResponse{ParseQuality: registry.ParseQualityFailed},
+			fmt.Errorf("nuclei args policy: %w", policyErr)
+	}
+	args = append(args, filtered...)
 
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "nuclei", args...)

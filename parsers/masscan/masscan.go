@@ -67,8 +67,13 @@ func (p *parser) Execute(ctx context.Context, req registry.ExecuteRequest) (*reg
 	if rate == "" {
 		rate = "1000"
 	}
+	filtered, policyErr := registry.ApplyPolicy(toolName, req.Args, nil)
+	if policyErr != nil {
+		return &registry.ExecuteResponse{ParseQuality: registry.ParseQualityFailed},
+			fmt.Errorf("masscan args policy: %w", policyErr)
+	}
 	args := []string{"--rate", rate, "-p", ports, "-oJ", "-", req.Target}
-	args = append(args, req.Args...)
+	args = append(args, filtered...)
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "masscan", args...)
 	cmd.Stdout = &stdout

@@ -64,17 +64,24 @@ func (p *parser) Describe() registry.CatalogEntry {
 func (p *parser) OutputMessage() proto.Message { return nil }
 
 // buildArgs composes the nmap argv from the request. Always appends -oX -
-// for XML-on-stdout so parseXML can consume it.
-func buildArgs(req registry.ExecuteRequest) []string {
+// for XML-on-stdout so parseXML can consume it. Caller-supplied req.Args
+// are filtered through the per-tool args policy (see policy.go) — flags
+// not on the allowlist are dropped with structured logs and a value
+// validator rejection becomes a hard InvalidArgument error.
+func buildArgs(req registry.ExecuteRequest) ([]string, error) {
 	args := []string{"-oX", "-"}
 	if p, ok := req.Options["ports"]; ok && p != "" {
 		args = append(args, "-p", p)
 	}
-	args = append(args, req.Args...)
+	filtered, err := registry.ApplyPolicy(toolName, req.Args, nil)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, filtered...)
 	if req.Target != "" {
 		args = append(args, req.Target)
 	}
-	return args
+	return args, nil
 }
 
 // Execute runs nmap and returns the parsed DiscoveryResult. When nmap is not
@@ -82,7 +89,11 @@ func buildArgs(req registry.ExecuteRequest) []string {
 // preserved; the registry contract requires Execute to return a non-nil
 // response even on failure so the daemon sees stdout/stderr for diagnostics.
 func (p *parser) Execute(ctx context.Context, req registry.ExecuteRequest) (*registry.ExecuteResponse, error) {
-	args := buildArgs(req)
+	args, policyErr := buildArgs(req)
+	if policyErr != nil {
+		return &registry.ExecuteResponse{ParseQuality: registry.ParseQualityFailed},
+			fmt.Errorf("nmap args policy: %w", policyErr)
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "nmap", args...)
