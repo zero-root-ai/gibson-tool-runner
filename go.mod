@@ -1,8 +1,6 @@
 module github.com/zero-day-ai/gibson-tool-runner
 
-go 1.25.0
-
-toolchain go1.25.5
+go 1.25.10
 
 require (
 	github.com/Ullaakut/nmap/v3 v3.1.0
