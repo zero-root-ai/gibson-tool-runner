@@ -29,17 +29,38 @@ PATTERNS=(
     'TrustLocalhost'
 )
 
+# Repo-relative paths that document the forbidden patterns themselves and so
+# must be excluded from the scan. Without this allowlist the guard trips on
+# its own documentation catalog.
+IGNORE_PATHS=(
+    'docs/forbidden-patterns.md'
+    'docs/rules.yaml'
+    'docs/auth.md'
+)
+
 # Build a single alternation pattern for ripgrep.
 PATTERN=$(printf '%s|' "${PATTERNS[@]}")
 PATTERN="${PATTERN%|}"  # strip trailing pipe
 
-# Resolve repo root so the script works from any working directory.
-REPO_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+# Resolve repo root so the script works from any working directory. Callers
+# can override REPO_ROOT (e.g. for testing against a fixture directory) by
+# exporting it before invocation.
+REPO_ROOT="${REPO_ROOT:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel)}"
+
+# Build ripgrep --glob exclusions from IGNORE_PATHS.
+RG_EXCLUDES=()
+for p in "${IGNORE_PATHS[@]}"; do
+    RG_EXCLUDES+=(--glob "!${p}")
+done
 
 echo "check-no-legacy-auth: scanning ${REPO_ROOT} for forbidden patterns..."
 
+# Run ripgrep from inside REPO_ROOT so the IGNORE_PATHS globs (which are
+# specified repo-relative) anchor correctly.
+cd "${REPO_ROOT}"
+
 # Collect matches (rg exits 0 = found, 1 = not found, 2 = error).
-if HITS=$(rg -nl --type go --type md --type yaml -e "$PATTERN" "$REPO_ROOT" 2>&1); then
+if HITS=$(rg -nl --type go --type md --type yaml "${RG_EXCLUDES[@]}" -e "$PATTERN" . 2>&1); then
     echo ""
     echo "ERROR: legacy auth patterns found in the following files:"
     echo "$HITS" | while IFS= read -r f; do

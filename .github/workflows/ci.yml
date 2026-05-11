@@ -41,3 +41,6 @@ jobs:
 
       - name: no-legacy-auth guard
         run: bash scripts/check-no-legacy-auth.sh
+
+      - name: no-legacy-auth guard unit tests
+        run: bash scripts/__tests__/check-no-legacy-auth.test.sh
