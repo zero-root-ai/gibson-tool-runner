@@ -1,0 +1,69 @@
+# Shared golangci-lint v2 baseline — adopted from
+# zero-day-ai/.github/templates/golangci-base.yml (slice 2.2, gibson#172).
+# Linter set lives in the base; per-repo section below is the only place
+# to add repo-specific exclusions.
+
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - staticcheck
+    - govet
+    - errcheck
+    - ineffassign
+    - unused
+    - exhaustive
+    - gosec
+    - errorlint
+    - wrapcheck
+    - nilerr
+    - contextcheck
+    - fatcontext
+    - depguard
+    - gocritic
+    - revive
+    - gocyclo
+    - prealloc
+    - dupl
+    - copyloopvar
+    - gocheckcompilerdirectives
+    - intrange
+    - mirror
+    - perfsprint
+    - sloglint
+    - testifylint
+    - thelper
+    - usestdlibvars
+    - whitespace
+
+  settings:
+    staticcheck:
+      checks: ["all"]
+    gosec:
+      severity: medium
+    exhaustive:
+      default-signifies-exhaustive: false
+      check: [switch]
+    gocyclo:
+      min-complexity: 20
+    dupl:
+      threshold: 150
+    gocritic:
+      enabled-tags: [diagnostic, performance, style]
+      disabled-checks: [hugeParam, rangeValCopy]
+
+  exclusions:
+    paths:
+      - ".*\\.pb\\.go$"
+      - ".*_grpc\\.pb\\.go$"
+      - "zz_generated.*\\.go$"
+      - "api/gen/.*"
+    rules: []
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+# allowlist:
+# Per-repo opt-outs go here with a TODO referencing a follow-up issue.
