@@ -1,5 +1,8 @@
 name: release
 
+# Publishes the --list-tools OCI catalog artifact on tag push.
+# Image build has moved to image.yml (org reusable, slice 1.2, .github#47).
+
 on:
   push:
     tags:
@@ -10,22 +13,17 @@ permissions:
   packages: write
 
 jobs:
-  image:
-    name: build + publish multi-arch image
+  catalog:
+    name: publish tool catalog as OCI artifact
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
-      - name: set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: log in to GHCR
-        uses: zero-day-ai/.github/.github/actions/ghcr-login@main
+      - name: set up Go
+        uses: actions/setup-go@v5
         with:
-          password: ${{ secrets.GITHUB_TOKEN }}
+          go-version-file: go.mod
+          cache: true
 
       - name: compute tags
         id: tags
@@ -35,16 +33,10 @@ jobs:
           echo "semver=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           echo "major=${MAJOR}" >> "$GITHUB_OUTPUT"
 
-      - name: build + push
-        id: build
-        uses: docker/build-push-action@v6
+      - name: log in to GHCR
+        uses: zero-day-ai/.github/.github/actions/ghcr-login@main
         with:
-          context: .
-          platforms: linux/amd64
-          push: true
-          tags: |
-            ghcr.io/zero-day-ai/gibson-tool-runner:${{ steps.tags.outputs.semver }}
-            ghcr.io/zero-day-ai/gibson-tool-runner:${{ steps.tags.outputs.major }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: publish --list-tools catalog as OCI artifact
         run: |
