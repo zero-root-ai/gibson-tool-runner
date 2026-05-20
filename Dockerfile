@@ -23,9 +23,23 @@ FROM golang:1.25-bookworm AS build
 
 WORKDIR /src
 
+# github.com/zero-day-ai/platform-clients is a private module. `ghtoken` is
+# the BuildKit secret id (mounted read-only at /run/secrets/ghtoken by the
+# reusable image-build workflow). When not provided (local dev without the
+# secret) the `git config` step is skipped so offline builds still compile
+# against cached modules.
+ENV GOPRIVATE=github.com/zero-day-ai
+
 # Dependencies first for layer caching.
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=secret,id=ghtoken \
+    if [ -f /run/secrets/ghtoken ]; then \
+        git config --global \
+          url."https://x-access-token:$(cat /run/secrets/ghtoken)@github.com/".insteadOf \
+          "https://github.com/"; \
+    fi && \
+    go mod download
 
 # Source.
 COPY . .

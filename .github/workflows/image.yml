@@ -26,6 +26,8 @@ jobs:
       id-token: write
       attestations: write
       security-events: write
+    secrets:
+      ghtoken: ${{ secrets.GH_PAT_GIBSON_RO }}
     with:
       component_name: gibson-tool-runner
       component_path: .

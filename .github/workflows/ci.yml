@@ -10,8 +10,16 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-24.04
+    env:
+      GOPRIVATE: github.com/zero-day-ai
     steps:
       - uses: actions/checkout@v4
+
+      - name: configure git for private modules
+        run: |
+          git config --global \
+            url."https://x-access-token:${{ secrets.GH_PAT_GIBSON_RO }}@github.com/".insteadOf \
+            "https://github.com/"
 
       - name: set up Go
         uses: actions/setup-go@v5

@@ -21,8 +21,16 @@ jobs:
     name: govulncheck
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      GOPRIVATE: github.com/zero-day-ai
     steps:
       - uses: actions/checkout@v4
+
+      - name: configure git for private modules
+        run: |
+          git config --global \
+            url."https://x-access-token:${{ secrets.GH_PAT_GIBSON_RO }}@github.com/".insteadOf \
+            "https://github.com/"
 
       - uses: actions/setup-go@v5
         with:
