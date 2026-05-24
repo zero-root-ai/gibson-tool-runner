@@ -5,7 +5,7 @@ go 1.25.10
 require (
 	github.com/Ullaakut/nmap/v3 v3.1.0
 	github.com/zero-day-ai/platform-clients v0.2.0
-	github.com/zero-day-ai/sdk v0.117.0
+	github.com/zero-day-ai/sdk v0.119.0
 	google.golang.org/protobuf v1.36.11
 )
 
