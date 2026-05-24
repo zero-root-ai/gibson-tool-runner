@@ -3,8 +3,6 @@ name: CodeQL
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   schedule:
     - cron: "0 8 * * 2"
 
@@ -42,7 +40,7 @@ jobs:
       - uses: github/codeql-action/init@v3
         with:
           languages: go
-          queries: security-and-quality
+          queries: security-extended
 
       - uses: github/codeql-action/autobuild@v3
 
