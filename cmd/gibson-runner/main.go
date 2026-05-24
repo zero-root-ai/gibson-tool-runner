@@ -26,6 +26,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -35,6 +36,10 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	componentpb "github.com/zero-day-ai/sdk/api/gen/gibson/component/v1"
+	graphragpb "github.com/zero-day-ai/sdk/api/gen/gibson/graphrag/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zero-day-ai/gibson-tool-runner/internal/probes"
 	"github.com/zero-day-ai/gibson-tool-runner/internal/registry"
@@ -168,6 +173,13 @@ func runServe() {
 	logger.Info("shutdown complete")
 }
 
+// abiOutputMarker and abiErrorMarker are the ABI sentinel prefixes the daemon
+// parses from the last stdout line to extract the b64-encoded response or error.
+const (
+	abiOutputMarker = "===GIBSON_TOOL_OUTPUT==="
+	abiErrorMarker  = "===GIBSON_TOOL_ERROR==="
+)
+
 func runDefault() {
 	toolName := strings.TrimSpace(os.Getenv(envToolName))
 	if toolName == "" {
@@ -176,18 +188,146 @@ func runDefault() {
 	}
 	parser, ok := registry.Lookup(toolName)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "tool %q not registered in this runner image\n", toolName)
+		emitError(fmt.Sprintf("tool %q not registered in this runner image", toolName))
 		os.Exit(exitToolNotRegistered)
 	}
 
-	// v0.1 scaffold: input decoding + ABI marker emission will land with the
-	// first parser (nmap) in task 6. For now main() returns cleanly to
-	// confirm the binary compiles and --list-tools exercises the registry.
-	_ = parser
-	_ = context.Background
-	_ = envInputB64
-	fmt.Fprintln(os.Stderr, "gibson-runner: execute mode requires at least one registered parser (add parsers under ./parsers/)")
-	os.Exit(exitExecuteError)
+	// Decode the request envelope from GIBSON_TOOL_INPUT_B64.
+	inputB64 := strings.TrimSpace(os.Getenv(envInputB64))
+	if inputB64 == "" {
+		fmt.Fprintf(os.Stderr, "%s not set\n", envInputB64)
+		os.Exit(exitInputParse)
+	}
+	raw, err := base64.StdEncoding.DecodeString(inputB64)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "base64 decode %s: %v\n", envInputB64, err)
+		os.Exit(exitInputParse)
+	}
+	var callReq componentpb.CallToolRequest
+	if err := protojson.Unmarshal(raw, &callReq); err != nil {
+		fmt.Fprintf(os.Stderr, "protojson unmarshal CallToolRequest: %v\n", err)
+		os.Exit(exitInputParse)
+	}
+
+	// Map CallToolRequest.input_json into the internal ExecuteRequest.
+	execReq, err := decodeInputJSON(callReq.GetInputJson())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "decode input_json: %v\n", err)
+		os.Exit(exitInputParse)
+	}
+	if callReq.GetTimeoutMs() > 0 {
+		execReq.Timeout = int32(callReq.GetTimeoutMs() / 1000)
+	}
+
+	// Root context: honour SIGTERM/SIGINT so the process exits cleanly when
+	// the microVM supervisor terminates it.
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer cancel()
+
+	// Per-call timeout on top of the signal context.
+	if execReq.Timeout > 0 {
+		var timeoutCancel context.CancelFunc
+		ctx, timeoutCancel = context.WithTimeout(ctx, time.Duration(execReq.Timeout)*time.Second)
+		defer timeoutCancel()
+	}
+
+	resp, execErr := parser.Execute(ctx, execReq)
+	if execErr != nil {
+		// The error is surfaced via CallToolResponse.error so the daemon can
+		// log it as a structured outcome. We also preserve stdout/stderr from
+		// resp when the parser populated them (e.g. nmap produces useful stderr
+		// even on partial failure).
+		code := "EXECUTE_ERROR"
+		if resp != nil && resp.ParseQuality == registry.ParseQualityFailed {
+			code = "PARSE_FAILED"
+		}
+		emitResponse(&componentpb.CallToolResponse{
+			Error: &componentpb.ComponentError{
+				Code:      code,
+				Message:   execErr.Error(),
+				Retryable: false,
+			},
+		})
+		os.Exit(exitExecuteError)
+	}
+
+	// Marshal the DiscoveryResult as protojson into output_json. When there
+	// is no discovery (e.g. the tool produced raw output only), emit an empty
+	// DiscoveryResult so the daemon's JSON parser always gets a valid object.
+	disc := resp.Discovery
+	if disc == nil {
+		disc = &graphragpb.DiscoveryResult{}
+	}
+	outputJSON, err := protojson.MarshalOptions{
+		EmitUnpopulated: false,
+		UseProtoNames:   true,
+	}.Marshal(disc)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshal DiscoveryResult: %v\n", err)
+		os.Exit(exitOutputMarshal)
+	}
+	emitResponse(&componentpb.CallToolResponse{
+		OutputJson: string(outputJSON),
+	})
+}
+
+// decodeInputJSON unmarshals the tool-specific JSON payload (input_json from
+// CallToolRequest) into an ExecuteRequest. The schema is tool-defined but all
+// tools share a common subset: "target" (string), "args" ([]string), and
+// arbitrary string k/v pairs that land in Options.
+func decodeInputJSON(inputJSON string) (registry.ExecuteRequest, error) {
+	var req registry.ExecuteRequest
+	if inputJSON == "" {
+		return req, nil
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(inputJSON), &m); err != nil {
+		return req, fmt.Errorf("unmarshal input_json: %w", err)
+	}
+
+	if raw, ok := m["target"]; ok {
+		if err := json.Unmarshal(raw, &req.Target); err != nil {
+			return req, fmt.Errorf("input_json.target: %w", err)
+		}
+		delete(m, "target")
+	}
+
+	if raw, ok := m["args"]; ok {
+		if err := json.Unmarshal(raw, &req.Args); err != nil {
+			return req, fmt.Errorf("input_json.args: %w", err)
+		}
+		delete(m, "args")
+	}
+
+	// Remaining fields become Options (string values only; non-strings are
+	// skipped — parsers that need structured types handle them directly).
+	if len(m) > 0 {
+		req.Options = make(map[string]string, len(m))
+	}
+	for k, raw := range m {
+		var s string
+		if err := json.Unmarshal(raw, &s); err == nil {
+			req.Options[k] = s
+		}
+	}
+	return req, nil
+}
+
+// emitResponse marshals resp as protojson, base64-encodes it, and prints
+// the ABI output marker line to stdout.
+func emitResponse(resp *componentpb.CallToolResponse) {
+	b, err := protojson.Marshal(resp)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshal CallToolResponse: %v\n", err)
+		os.Exit(exitOutputMarshal)
+	}
+	fmt.Printf("%s%s\n", abiOutputMarker, base64.StdEncoding.EncodeToString(b))
+}
+
+// emitError writes the ABI error marker and message to stdout. The caller is
+// responsible for calling os.Exit with the appropriate code.
+func emitError(msg string) {
+	fmt.Printf("%s%s\n", abiErrorMarker, msg)
 }
 
 // healthAddr returns the listen address for the health HTTP server.
