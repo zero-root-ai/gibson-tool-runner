@@ -9,7 +9,6 @@
 package nmap
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os/exec"
@@ -19,6 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zero-day-ai/gibson-tool-runner/internal/registry"
+	"github.com/zero-day-ai/gibson-tool-runner/internal/sandbox"
 )
 
 const (
@@ -95,8 +95,12 @@ func (p *parser) Execute(ctx context.Context, req registry.ExecuteRequest) (*reg
 			fmt.Errorf("nmap args policy: %w", policyErr)
 	}
 
-	var stdout, stderr bytes.Buffer
+	sbCfg := sandbox.DefaultConfig()
+	var stdout, stderr sandbox.CappedBuffer
+	stdout.Init(sbCfg.OutputCapBytes)
+	stderr.Init(sbCfg.OutputCapBytes)
 	cmd := exec.CommandContext(ctx, "nmap", args...)
+	sandbox.Apply(cmd, sbCfg)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	runErr := cmd.Run()
@@ -109,6 +113,9 @@ func (p *parser) Execute(ctx context.Context, req registry.ExecuteRequest) (*reg
 		resp.ExitCode = int32(cmd.ProcessState.ExitCode())
 	}
 
+	if err := stdout.Err(); err != nil {
+		return resp, fmt.Errorf("nmap stdout: %w", err)
+	}
 	if runErr != nil && len(stdout.Bytes()) == 0 {
 		// nmap didn't even produce XML — hard failure.
 		resp.ParseQuality = registry.ParseQualityFailed

@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zero-day-ai/gibson-tool-runner/internal/registry"
+	"github.com/zero-day-ai/gibson-tool-runner/internal/sandbox"
 )
 
 const (
@@ -64,8 +65,12 @@ func (p *parser) Execute(ctx context.Context, req registry.ExecuteRequest) (*reg
 			fmt.Errorf("amass args policy: %w", policyErr)
 	}
 	args = append(args, filtered...)
-	var stdout, stderr bytes.Buffer
+	sbCfg := sandbox.DefaultConfig()
+	var stdout, stderr sandbox.CappedBuffer
+	stdout.Init(sbCfg.OutputCapBytes)
+	stderr.Init(sbCfg.OutputCapBytes)
 	cmd := exec.CommandContext(ctx, "amass", args...)
+	sandbox.Apply(cmd, sbCfg)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	runErr := cmd.Run()
@@ -73,6 +78,9 @@ func (p *parser) Execute(ctx context.Context, req registry.ExecuteRequest) (*reg
 	resp := &registry.ExecuteResponse{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}
 	if cmd.ProcessState != nil {
 		resp.ExitCode = int32(cmd.ProcessState.ExitCode())
+	}
+	if err := stdout.Err(); err != nil {
+		return resp, fmt.Errorf("amass stdout: %w", err)
 	}
 	disc, quality, parseErr := parseJSONLines(stdout.Bytes(), req.Target)
 	resp.Discovery = disc

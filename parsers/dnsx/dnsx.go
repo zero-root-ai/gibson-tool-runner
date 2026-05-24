@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zero-day-ai/gibson-tool-runner/internal/registry"
+	"github.com/zero-day-ai/gibson-tool-runner/internal/sandbox"
 )
 
 const (
@@ -59,9 +60,13 @@ func (p *parser) Execute(ctx context.Context, req registry.ExecuteRequest) (*reg
 			fmt.Errorf("dnsx args policy: %w", policyErr)
 	}
 	args = append(args, filtered...)
+	sbCfg := sandbox.DefaultConfig()
+	var stdout, stderr sandbox.CappedBuffer
+	stdout.Init(sbCfg.OutputCapBytes)
+	stderr.Init(sbCfg.OutputCapBytes)
 	cmd := exec.CommandContext(ctx, "dnsx", args...)
+	sandbox.Apply(cmd, sbCfg)
 	cmd.Stdin = bytes.NewReader([]byte(req.Target + "\n"))
-	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	runErr := cmd.Run()
@@ -69,6 +74,9 @@ func (p *parser) Execute(ctx context.Context, req registry.ExecuteRequest) (*reg
 	resp := &registry.ExecuteResponse{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}
 	if cmd.ProcessState != nil {
 		resp.ExitCode = int32(cmd.ProcessState.ExitCode())
+	}
+	if err := stdout.Err(); err != nil {
+		return resp, fmt.Errorf("dnsx stdout: %w", err)
 	}
 	disc, quality, parseErr := parseJSONLines(stdout.Bytes())
 	resp.Discovery = disc
