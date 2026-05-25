@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.106.1](https://github.com/zero-day-ai/gibson-tool-runner/compare/v0.106.0...v0.106.1) (2026-05-24)
+
+
+### Bug Fixes
+
+* **ci:** remove PR trigger and use security-extended for CodeQL ([#53](https://github.com/zero-day-ai/gibson-tool-runner/issues/53)) ([5dc4df4](https://github.com/zero-day-ai/gibson-tool-runner/commit/5dc4df4df4be82d8e4e1948a9d309eb04344e19d)), closes [#52](https://github.com/zero-day-ai/gibson-tool-runner/issues/52)
+* **security:** add SysProcAttr/rlimit/output-cap sandbox to child tool invocations ([#55](https://github.com/zero-day-ai/gibson-tool-runner/issues/55)) ([39f55fa](https://github.com/zero-day-ai/gibson-tool-runner/commit/39f55fa75de1b9e905f298e2d0d3cdf189982787))
+
 ## [0.106.0](https://github.com/zero-day-ai/gibson-tool-runner/compare/v0.105.0...v0.106.0) (2026-05-24)
 
 
