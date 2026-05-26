@@ -116,7 +116,7 @@ func runServe() {
 	// Initialise OTel. The call is idempotent; OTEL_EXPORTER_OTLP_ENDPOINT
 	// controls whether traces are exported (no-op when unset so local runs
 	// stay quiet without a collector).
-	otelProvider, err := observability.Init(serviceName)
+	otelProvider, err := observability.Init(context.Background(), serviceName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "observability init: %v\n", err)
 		os.Exit(1)
